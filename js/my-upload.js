@@ -1,18 +1,33 @@
+/*** helper functions for sending rest calls *********************************/
+
+/**
+ * A helper function to send an HTTP call to the specified url.
+ * 
+ * @param {*} type - HTTP call type. (GET or POST for this sample project)
+ * @param {*} url - url to use for the HTTP call
+ * @param {*} headers - an array of objects representing headers. Ex: [{name: "Content-Type", value: "application/json"}, {name: "AUTHUSER", value: "admin"}]
+ * @param {*} body - body content of the HTTP call
+ */
 function httpReq(type, url, headers, body) {
     return new Promise(function (resolve, reject) {
-        // console.log("httpReq: (" + type + ", " + url + ")");
+        // start building the request
         var httpRequest = new XMLHttpRequest();
         httpRequest.open(type, url, true);
+        httpRequest.setRequestHeader("Content-Type", "application/json");
+
+        // add any headers passed to function
         headers = headers || [];
         for (var i = 0; i < headers.length; i++) {
             var header = headers[i];
             httpRequest.setRequestHeader(header.name, header.value);
         }
-        httpRequest.setRequestHeader("Content-Type", "application/json");
+        
+        // send the request
         httpRequest.send(body);
+
+        // resolve or reject promise when the result is returned
         httpRequest.onreadystatechange = function () {
             if (httpRequest.readyState == 4 && httpRequest.status == 200) {
-                // console.log("httpReq result: " + httpRequest.responseText.toString());
                 resolve(httpRequest);
             } else if (httpRequest.readyState == 4 && httpRequest.status == 400) {
                 var err = new Error(httpRequest.statusText);
@@ -22,6 +37,15 @@ function httpReq(type, url, headers, body) {
     });
 }
 
+
+/**
+ * 
+ * @param {*} type 
+ * @param {*} url 
+ * @param {*} headers 
+ * @param {*} body 
+ * @param {*} attempts 
+ */
 function httpReqGuaranteed(type, url, headers, body, attempts) {
     return new Promise(function (resolve, reject) {
         console.log("httpReqGuaranteed: (" + type + ", " + url + ", " + attempts + ")");
@@ -48,6 +72,10 @@ function httpReqGuaranteed(type, url, headers, body, attempts) {
     });
 }
 
+
+/**
+ * 
+ */
 function getCredentials() {
     let urlField = document.getElementById("inn-url");
     let dbField = document.getElementById("inn-db");
@@ -63,6 +91,10 @@ function getCredentials() {
     return creds;
 }
 
+
+/**
+ * 
+ */
 function getFile() {
     var myfile = null;
     var file = document.getElementById("file-field").files[0];
@@ -79,6 +111,15 @@ function getFile() {
     return file;
 }
 
+
+/**
+ * 
+ * @param {*} chunkSize 
+ * @param {*} file 
+ * @param {*} transaction_id 
+ * @param {*} uploadUrl 
+ * @param {*} headers 
+ */
 function uploadFileInChunks(chunkSize, file, transaction_id, uploadUrl, headers) {
     // Build our blob array
     // Split our file into content chunks
@@ -121,6 +162,10 @@ function uploadFileInChunks(chunkSize, file, transaction_id, uploadUrl, headers)
     });
 }
 
+
+/**
+ * 
+ */
 function submitForm() {
     let creds = getCredentials();
     let myfile = getFile();
@@ -205,6 +250,10 @@ function submitForm() {
         });
 }
 
+
+/**
+ * 
+ */
 function generateNewGuid() {
     function randomDigit() {
         if (crypto && crypto.getRandomValues) {
@@ -219,8 +268,11 @@ function generateNewGuid() {
     return 'xxxxxxxxxxxx4xxx8xxxxxxxxxxxxxxx'.replace(/x/g, randomDigit).toUpperCase();
 }
 
-// escapes the following characters in the url:
-// %, ' ', ', !, ", #, $, &, (, ), *, +, ?
+
+/**
+ * escapes the following characters: %, ' ', ', !, ", #, $, &, (, ), *, +, ?
+ * @param {*} url 
+ */
 function escapeURL(url) {
     url = url.split('%').join('%25');
     url = url.split(' ').join('%20');
