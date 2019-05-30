@@ -2,18 +2,18 @@
 
 /**
  * A helper function to send an HTTP call to the specified url.
- * 
+ *
  * @param {*} type - HTTP call type. (GET or POST for this sample project)
  * @param {*} url - url to use for the HTTP call
  * @param {*} headers - an array of objects representing headers. Ex: [{name: "Content-Type", value: "application/json"}, {name: "AUTHUSER", value: "admin"}]
  * @param {*} body - body content of the HTTP call
+ * @param {*} attempts - number of times we should attempt this call. Default value is 0.
  */
-function httpReq(type, url, headers, body) {
+function httpReq(type, url, headers, body, attempts = 0) {
     return new Promise(function (resolve, reject) {
         // start building the request
         var httpRequest = new XMLHttpRequest();
         httpRequest.open(type, url, true);
-        httpRequest.setRequestHeader("Content-Type", "application/json");
 
         // add any headers passed to function
         headers = headers || [];
@@ -25,46 +25,18 @@ function httpReq(type, url, headers, body) {
         // send the request
         httpRequest.send(body);
 
-        // resolve or reject promise when the result is returned
+        // resolve or reject the promise when the response comes back
         httpRequest.onreadystatechange = function () {
             if (httpRequest.readyState == 4 && httpRequest.status == 200) {
+	    	// resolve the promise and return the request object
                 resolve(httpRequest);
-            } else if (httpRequest.readyState == 4 && httpRequest.status == 400) {
-                var err = new Error(httpRequest.statusText);
-                reject(err);
-            }
-        };
-    });
-}
 
-
-/**
- * 
- * @param {*} type 
- * @param {*} url 
- * @param {*} headers 
- * @param {*} body 
- * @param {*} attempts 
- */
-function httpReqGuaranteed(type, url, headers, body, attempts) {
-    return new Promise(function (resolve, reject) {
-        console.log("httpReqGuaranteed: (" + type + ", " + url + ", " + attempts + ")");
-        var httpRequest = new XMLHttpRequest();
-        httpRequest.open(type, url);
-        headers = headers || [];
-        for (var i = 0; i < headers.length; i++) {
-            var header = headers[i];
-            httpRequest.setRequestHeader(header.name, header.value);
-        }
-        httpRequest.send(body);
-        httpRequest.onreadystatechange = function () {
-            if (httpRequest.readyState == 4 && httpRequest.status == 200) {
-                console.log("httpReqGuaranteed result: " + httpRequest.responseText.toString());
-                resolve(httpRequest);
             } else if (httpRequest.readyState == 4 && attempts !== 0) {
-                // Try again
-                return httpReqGuaranteed(type, url, headers, body, attempts - 1);
+                // we have more attempts left, retry
+                return httpReq(type, url, headers, body, attempts - 1);
+
             } else if (httpRequest.readyState == 4 && httpRequest.status == 400) {
+	    	// reject the promise and return an error
                 var err = new Error(httpRequest.statusText);
                 reject(err);
             }
@@ -152,7 +124,7 @@ function uploadFileInChunks(chunkSize, file, transaction_id, uploadUrl, headers)
             value: transaction_id
         });
 
-        chunkUploadPromiseArray.push(httpReqGuaranteed("POST", uploadUrl, headers, chunkBlob, chunkUploadAttempts));
+        chunkUploadPromiseArray.push(httpReq("POST", uploadUrl, headers, chunkBlob, chunkUploadAttempts));
 
         i = endChunkSize + 1;
     }
@@ -231,7 +203,7 @@ function submitForm() {
             commit_body += '"Located":[{"file_version":1,"related_id":"67BBB9204FE84A8981ED8313049BA06C"}]}\r\n';
             commit_body += "--" + boundary + "--";
 
-            var completeUploadRequest = httpReqGuaranteed("POST", creds.url + "/vault/odata/vault.CommitTransaction", commit_headers, commit_body, 5);
+            var completeUploadRequest = httpReq("POST", creds.url + "/vault/odata/vault.CommitTransaction", commit_headers, commit_body, 5);
             return completeUploadRequest;
 
         }).then(function (fileUploadResponse) {
