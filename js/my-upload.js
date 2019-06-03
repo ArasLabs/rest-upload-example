@@ -1,3 +1,49 @@
+/**** main function **********************************************************/
+
+/**
+ * 
+ */
+function submitForm() {
+    // get and validate the connection input provided by the end user
+    var creds = getConnectionInput();
+    creds = validateConnectionInput(creds);
+    if (creds instanceof Error) {
+        alert(creds.message);
+        return;
+    }
+
+    // get the file selected by the end user
+    var my_file = getFileInput();
+    if (my_file === null) {
+        alert("Please select a file to upload.");
+        return;
+    }
+
+    // this sample project currently uses basic authentication (password), 
+    // but it could be modified to use OAuth tokens instead
+    var auth_headers = getBasicAuthHeaders(creds);
+
+    var transaction_id = "";
+    var file_id = generateNewGuid();
+    console.log("file id: " + file_id);
+
+    // get transactionid
+    var transaction = httpReq("POST", transactionUrl(creds.url), auth_headers);
+    transaction.then(function (transaction_req) {
+        transaction_id = getTransactionIdFromResponse(transaction_req);
+        return transaction_id;
+
+    }).then(function () {
+        // upload the file chunk(s)
+        console.log("transaction id: " + transaction_id); 
+        return uploadFile(my_file, file_id, transaction_id, creds, auth_headers);
+        
+    });
+}
+
+
+/**** request helpers ********************************************************/
+
 /**
  * A helper function to send an HTTP call to the specified url.
  *
@@ -53,153 +99,51 @@ function httpReq(type, url, headers, body, attempts = 0) {
     });
 }
 
+function uploadFile(file, file_id, transaction_id, creds, auth_headers, chunk_size = 10000) {
+    var upload_url = fileUploadUrl(creds.url, file_id);
+    var size = file.size;
+    var attempts = 5;
+    var start = 0;
 
-/**
- * Retrieves the connection data provided by the end user. 
- * Returns the connection info in an object. Example:
- * {
- *    url: "http://localhost/InnovatorServer",
- *     db: "InnovatorSolutions",
- *   user: "admin",
- *    pwd: MD5 hash of password entered by user
- * } 
- */
-function getConnectionInput() {
-    var urlField = document.getElementById("inn-url");
-    var dbField = document.getElementById("inn-db");
-    var userField = document.getElementById("inn-user");
-    var pwdField = document.getElementById("inn-pwd");
+    setTimeout(loop, 1);
 
-    var creds = {};
-    creds.url = urlField.value;
-    creds.db = dbField.value;
-    creds.user = userField.value;
-    creds.pwd = pwdField.value ? md5(pwdField.value) : null;
+    function loop() {
+        var end = start + chunk_size;
+        if (size - end < 0) {
+            end = size;
+        }
 
-    return creds;
-}
+        // var chunk = slice(file, start, end);
+        var chunk = file.slice(start, end);
 
+        // get an array of headers for this upload request
+        var headers = getUploadHeaders(auth_headers, escapeURL(file.name), start, end - 1, size, transaction_id);
 
-/**
- * Checks the connection data to make sure each property has a value.
- * Returns an error if a property doesn't have a value. Otherwise, returns the connection data object that was passed in.
- * 
- * @param {*} creds - an object containing the connection data provided by the end user. See getConnectionInput for an example.
- */
-function validateConnectionInput(creds) {
-    if (!creds.url) {
-        return new Error("Please enter a Innovator url.");
+        httpReq("POST", upload_url, headers, chunk, attempts);
+
+        if (end < size - 1) {
+            start += chunk_size;
+            setTimeout(loop, 1);
+        } else {
+            commitTransaction(file, file_id, transaction_id, creds, auth_headers);
+        }
     }
-    if (!creds.db) {
-        return new Error("Please enter a database name.");
-    }
-    if (!creds.user) {
-        return new Error("Please enter a user name.");
-    }
-    if (!creds.pwd) {
-        return new Error("Please enter a password.");
-    }
-
-    return creds;
 }
 
+function commitTransaction(my_file, file_id, transaction_id, creds, auth_headers) {
+    var boundary = "batch_" + file_id;
+    var commit_headers = getCommitHeaders(boundary, transaction_id, auth_headers);
+    var commit_body = getCommitBody(boundary, creds, file_id, my_file);
 
-/**
- * Retrieves the file selected by the end user. 
- * Returns a file object if a file has been selected. Otherwise returns null.
- */
-function getFileInput() {
-    var file = document.getElementById("file-field").files[0];
-    if (file === undefined) {
-        return null;
-    }
-
-    return file;
+    var commit = httpReq("POST", commitUrl(creds.url), commit_headers, commit_body);
+    commit.then(function(commit_response) {
+        var response = commit_response.responseText.toString();
+        var response_json = response.substring(response.indexOf("{"), response.lastIndexOf("}") + 1);
+        console.log(response_json);
+        var response_object = JSON.parse(response_json);
+        alert("Successfully uploaded file '" + response_object.filename + "' with id '" + response_object.id + "'" );
+    });
 }
-
-
-/**
- * Returns an array of objects representing the headers required for an Innovator REST call using basic authentication (password rather than OAuth token).
- * 
- * @param {*} creds - an object containing the connection data provided by the end user. See getConnectionInput for an example.
- */
-function getBasicAuthHeaders(creds) {
-    var basic_headers = [];
-    basic_headers.push({
-        name: "AUTHUSER",
-        value: creds.user
-    });
-    basic_headers.push({
-        name: "AUTHPASSWORD",
-        value: creds.pwd
-    });
-    basic_headers.push({
-        name: "DATABASE",
-        value: creds.db
-    });
-
-    return basic_headers;
-}
-
-
-/**
- * 
- * @param {*} auth_headers 
- * @param {*} escaped_name 
- * @param {*} start_range 
- * @param {*} end_range 
- * @param {*} file_size 
- * @param {*} transaction_id 
- */
-function getUploadHeaders(auth_headers, escaped_name, start_range, end_range, file_size, transaction_id) {
-    // start the upload headers array with a clone of the auth_headers array
-    var headers = auth_headers.slice(0);
-
-    // then add the headers needed for the file chunk upload
-    headers.push({
-        name: "Content-Disposition",
-        value: "attachment; filename*=utf-8''" + escaped_name
-    });
-    headers.push({
-        name: "Content-Range",
-        value: "bytes " + start_range + "-" + end_range + "/" + file_size
-    });
-    headers.push({
-        name: "Content-Type",
-        value: "application/octet-stream"
-    });
-    headers.push({
-        name: "transactionid",
-        value: transaction_id
-    });
-
-    return headers;
-}
-
-
-/**
- * 
- * @param {*} boundary 
- * @param {*} transaction_id 
- * @param {*} auth_headers 
- */
-function getCommitHeaders(boundary, transaction_id, auth_headers) {
-    var commit_headers = [];
-    commit_headers.push({
-        name: "Content-Type",
-        value: "multipart/mixed; boundary=" + boundary
-    });
-    commit_headers.push({
-        name: "transactionid",
-        value: transaction_id
-    });
-    auth_headers.forEach(element => {
-        commit_headers.push(element);
-    });
-
-    return commit_headers;
-}
-
 
 /**
  * 
@@ -235,45 +179,6 @@ function getCommitBody(boundary, creds, file_id, my_file) {
     return commit_body;
 }
 
-
-/**
- * 
- * @param {*} server_url 
- */
-function transactionUrl(server_url) {
-    return server_url + "/vault/odata/vault.BeginTransaction";
-}
-
-
-/**
- * 
- * @param {*} server_url 
- * @param {*} file_id 
- */
-function fileUploadUrl(server_url, file_id) {
-    return server_url + "/vault/odata/vault.UploadFile?fileId=" + file_id;
-}
-
-
-/**
- * 
- * @param {*} server_url 
- */
-function commitUrl(server_url) {
-    return server_url + "/vault/odata/vault.CommitTransaction";
-}
-
-
-/**
- * 
- * @param {*} server_url 
- * @param {*} file_id 
- */
-function getFileUrl(server_url, file_id) {
-    return server_url + "/server/odata/file('" + file_id + "')";
-}
-
-
 /**
  * 
  * @param {*} transaction_response 
@@ -285,93 +190,192 @@ function getTransactionIdFromResponse(transaction_response) {
     return response_object.transactionId;
 }
 
-function commitTransaction(my_file, file_id, transaction_id, creds, auth_headers) {
-    var boundary = "batch_" + file_id;
-    var commit_headers = getCommitHeaders(boundary, transaction_id, auth_headers);
-    var commit_body = getCommitBody(boundary, creds, file_id, my_file);
 
-    var commit = httpReq("POST", commitUrl(creds.url), commit_headers, commit_body);
-    commit.then(function(commit_response) {
-        var response = commit_response.responseText.toString();
-        var response_json = response.substring(response.indexOf("{"), response.lastIndexOf("}") + 1);
-        console.log(response_json);
-        var response_object = JSON.parse(response_json);
-        alert("Successfully uploaded file '" + response_object.filename + "' with id '" + response_object.id + "'" );
-    });
-}
+/**** url helpers ************************************************************/
 
-function uploadFile(file, file_id, transaction_id, creds, auth_headers, chunk_size = 10000) {
-    var upload_url = fileUploadUrl(creds.url, file_id);
-    var size = file.size;
-    var attempts = 5;
-    var start = 0;
-
-    setTimeout(loop, 1);
-
-    function loop() {
-        var end = start + chunk_size;
-        if (size - end < 0) {
-            end = size;
-        }
-
-        // var chunk = slice(file, start, end);
-        var chunk = file.slice(start, end);
-
-        // get an array of headers for this upload request
-        var headers = getUploadHeaders(auth_headers, escapeURL(file.name), start, end - 1, size, transaction_id);
-
-        httpReq("POST", upload_url, headers, chunk, attempts);
-
-        if (end < size - 1) {
-            start += chunk_size;
-            setTimeout(loop, 1);
-        } else {
-            commitTransaction(file, file_id, transaction_id, creds, auth_headers);
-        }
-    }
+/**
+ * 
+ * @param {*} server_url 
+ */
+function transactionUrl(server_url) {
+    return server_url + "/vault/odata/vault.BeginTransaction";
 }
 
 /**
  * 
+ * @param {*} server_url 
+ * @param {*} file_id 
  */
-function submitForm() {
-    // get and validate the connection input provided by the end user
-    var creds = getConnectionInput();
-    creds = validateConnectionInput(creds);
-    if (creds instanceof Error) {
-        alert(creds.message);
-        return;
-    }
-
-    // get the file selected by the end user
-    var my_file = getFileInput();
-    if (my_file === null) {
-        alert("Please select a file to upload.");
-        return;
-    }
-
-    // this sample project currently uses basic authentication (password), 
-    // but it could be modified to use OAuth tokens instead
-    var auth_headers = getBasicAuthHeaders(creds);
-
-    var transaction_id = "";
-    var file_id = generateNewGuid();
-    console.log("file id: " + file_id);
-
-    // get transactionid
-    var transaction = httpReq("POST", transactionUrl(creds.url), auth_headers);
-    transaction.then(function (transaction_req) {
-        transaction_id = getTransactionIdFromResponse(transaction_req);
-        return transaction_id;
-
-    }).then(function () {
-        // upload the file chunk(s)
-        console.log("transaction id: " + transaction_id); 
-        return uploadFile(my_file, file_id, transaction_id, creds, auth_headers);
-        
-    });
+function fileUploadUrl(server_url, file_id) {
+    return server_url + "/vault/odata/vault.UploadFile?fileId=" + file_id;
 }
 
+/**
+ * 
+ * @param {*} server_url 
+ */
+function commitUrl(server_url) {
+    return server_url + "/vault/odata/vault.CommitTransaction";
+}
+
+/**
+ * 
+ * @param {*} server_url 
+ * @param {*} file_id 
+ */
+function getFileUrl(server_url, file_id) {
+    return server_url + "/server/odata/file('" + file_id + "')";
+}
+
+
+/**** header helpers *********************************************************/
+
+/**
+ * Returns an array of objects representing the headers required for an Innovator REST call using basic authentication (password rather than OAuth token).
+ * 
+ * @param {*} creds - an object containing the connection data provided by the end user. See getConnectionInput for an example.
+ */
+function getBasicAuthHeaders(creds) {
+    var basic_headers = [];
+    basic_headers.push({
+        name: "AUTHUSER",
+        value: creds.user
+    });
+    basic_headers.push({
+        name: "AUTHPASSWORD",
+        value: creds.pwd
+    });
+    basic_headers.push({
+        name: "DATABASE",
+        value: creds.db
+    });
+
+    return basic_headers;
+}
+
+/**
+ * 
+ * @param {*} auth_headers 
+ * @param {*} escaped_name 
+ * @param {*} start_range 
+ * @param {*} end_range 
+ * @param {*} file_size 
+ * @param {*} transaction_id 
+ */
+function getUploadHeaders(auth_headers, escaped_name, start_range, end_range, file_size, transaction_id) {
+    // start the upload headers array with a clone of the auth_headers array
+    var headers = auth_headers.slice(0);
+
+    // then add the headers needed for the file chunk upload
+    headers.push({
+        name: "Content-Disposition",
+        value: "attachment; filename*=utf-8''" + escaped_name
+    });
+    headers.push({
+        name: "Content-Range",
+        value: "bytes " + start_range + "-" + end_range + "/" + file_size
+    });
+    headers.push({
+        name: "Content-Type",
+        value: "application/octet-stream"
+    });
+    headers.push({
+        name: "transactionid",
+        value: transaction_id
+    });
+
+    return headers;
+}
+
+/**
+ * 
+ * @param {*} boundary 
+ * @param {*} transaction_id 
+ * @param {*} auth_headers 
+ */
+function getCommitHeaders(boundary, transaction_id, auth_headers) {
+    var commit_headers = [];
+    commit_headers.push({
+        name: "Content-Type",
+        value: "multipart/mixed; boundary=" + boundary
+    });
+    commit_headers.push({
+        name: "transactionid",
+        value: transaction_id
+    });
+    auth_headers.forEach(element => {
+        commit_headers.push(element);
+    });
+
+    return commit_headers;
+}
+
+
+/**** collect & validate input ***********************************************/
+
+/**
+ * Retrieves the connection data provided by the end user. 
+ * Returns the connection info in an object. Example:
+ * {
+ *    url: "http://localhost/InnovatorServer",
+ *     db: "InnovatorSolutions",
+ *   user: "admin",
+ *    pwd: MD5 hash of password entered by user
+ * } 
+ */
+function getConnectionInput() {
+    var urlField = document.getElementById("inn-url");
+    var dbField = document.getElementById("inn-db");
+    var userField = document.getElementById("inn-user");
+    var pwdField = document.getElementById("inn-pwd");
+
+    var creds = {};
+    creds.url = urlField.value;
+    creds.db = dbField.value;
+    creds.user = userField.value;
+    creds.pwd = pwdField.value ? md5(pwdField.value) : null;
+
+    return creds;
+}
+
+/**
+ * Checks the connection data to make sure each property has a value.
+ * Returns an error if a property doesn't have a value. Otherwise, returns the connection data object that was passed in.
+ * 
+ * @param {*} creds - an object containing the connection data provided by the end user. See getConnectionInput for an example.
+ */
+function validateConnectionInput(creds) {
+    if (!creds.url) {
+        return new Error("Please enter a Innovator url.");
+    }
+    if (!creds.db) {
+        return new Error("Please enter a database name.");
+    }
+    if (!creds.user) {
+        return new Error("Please enter a user name.");
+    }
+    if (!creds.pwd) {
+        return new Error("Please enter a password.");
+    }
+
+    return creds;
+}
+
+/**
+ * Retrieves the file selected by the end user. 
+ * Returns a file object if a file has been selected. Otherwise returns null.
+ */
+function getFileInput() {
+    var file = document.getElementById("file-field").files[0];
+    if (file === undefined) {
+        return null;
+    }
+
+    return file;
+}
+
+
+/**** misc utilities *********************************************************/
 
 /**
  * 
@@ -389,7 +393,6 @@ function generateNewGuid() {
     var crypto = window.crypto || window.msCrypto;
     return 'xxxxxxxxxxxx4xxx8xxxxxxxxxxxxxxx'.replace(/x/g, randomDigit).toUpperCase();
 }
-
 
 /**
  * escapes the following characters: %, ' ', ', !, ", #, $, &, (, ), *, +, ?
@@ -412,15 +415,3 @@ function escapeURL(url) {
 
     return url;
 }
-
-/**
- * Formalize file.slice
- */
-
-// function slice(file, start, end) {
-//     var slice = file.mozSlice ? file.mozSlice :
-//         file.webkitSlice ? file.webkitSlice :
-//             file.slice ? file.slice : noop;
-
-//     return slice.bind(file)(start, end);
-// }
