@@ -35,9 +35,9 @@ function submitForm() {
 
     }).then(function () {
         // upload the file chunk(s)
-        console.log("transaction id: " + transaction_id); 
+        console.log("transaction id: " + transaction_id);
         return uploadFile(my_file, file_id, transaction_id, creds, auth_headers);
-        
+
     });
 }
 
@@ -71,7 +71,7 @@ function httpReq(type, url, headers, body, attempts = 0) {
             var header = headers[i];
             httpRequest.setRequestHeader(header.name, header.value);
         }
-        
+
         // send the request
         httpRequest.send(body);
 
@@ -94,7 +94,7 @@ function httpReq(type, url, headers, body, attempts = 0) {
                 console.log("rejecting : " + httpRequest.responseText.toString());
                 var err = new Error(httpRequest.statusText);
                 reject(err);
-            } 
+            }
         };
     });
 }
@@ -136,12 +136,12 @@ function commitTransaction(my_file, file_id, transaction_id, creds, auth_headers
     var commit_body = getCommitBody(boundary, creds, file_id, my_file);
 
     var commit = httpReq("POST", commitUrl(creds.url), commit_headers, commit_body);
-    commit.then(function(commit_response) {
+    commit.then(function (commit_response) {
         var response = commit_response.responseText.toString();
         var response_json = response.substring(response.indexOf("{"), response.lastIndexOf("}") + 1);
         console.log(response_json);
         var response_object = JSON.parse(response_json);
-        alert("Successfully uploaded file '" + response_object.filename + "' with id '" + response_object.id + "'" );
+        alert("Successfully uploaded file '" + response_object.filename + "' with id '" + response_object.id + "'");
     });
 }
 
