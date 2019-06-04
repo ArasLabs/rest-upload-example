@@ -22,13 +22,72 @@ function submitForm() {
 
     // this sample project currently uses basic authentication (password), 
     // but it could be modified to use OAuth tokens instead
-    var auth_headers = getBasicAuthHeaders(creds);
-
+    // var auth_headers = getBasicAuthHeaders(creds);
     var transaction_id = "";
     var file_id = generateNewGuid();
+    var auth_headers;
+
+    // // get the OAuth server url
+    // var oauth_res = getOAuthServerUrl(creds);
+
+    // // get the OAuth server token endpoint
+    // var endpoint_res = oauth_res.then(function (oauth_res) {
+    //     var response = oauth_res.responseText.toString();
+    //     var response_object = JSON.parse(response);
+    //     var oauth_url = response_object.locations[0].uri;
+    //     console.log("oauth_url: " + oauth_url);
+    //     return getTokenEndpointUrl(oauth_url);
+    // });
+
+    // // get the OAuth token
+    // var token_res = endpoint_res.then(function (endpoint_res) {
+    //     var response = endpoint_res.responseText.toString();
+    //     var response_object = JSON.parse(response);
+    //     var token_url = response_object.token_endpoint;
+    //     console.log("token_url: " + token_url);
+    //     return getToken(creds, token_url);
+    // });
+
+    // // add the OAuth token to the credential object and get a transaction id
+    // var transaction_res = token_res.then(function (token_res) {
+    //     var response = token_res.responseText.toString();
+    //     var response_object = JSON.parse(response);
+    //     var token = response_object.access_token;
+    //     creds.token = token;
+    //     console.log("token: " + token);
+    // });
+
+    // get an OAuth token from the server
+    var auth_res = authenticate(creds);
+
+    // get a transaction id for uploading a file to the vault server
+    var transaction_res = auth_res.then(
+        function (auth_res) {
+            var response = auth_res.responseText.toString();
+            var response_object = JSON.parse(response);
+            var token = response_object.access_token;
+
+            // add the token to creds
+            creds.token = token;
+            auth_headers = getOAuthHeaders(creds);
+
+            return httpReq("POST", transactionUrl(creds.url), auth_headers);
+        }
+    );
+
+    var upload_res = transaction_res.then(
+        function(transaction_res) {
+            var response = transaction_res.responseText.toString();
+            var response_object = JSON.parse(response);
+            transaction_id = response_object.transactionId;
+
+            return uploadFile(my_file, file_id, transaction_id, creds, auth_headers);
+        }
+    );
+
 
     // get transactionid
-    var transaction = httpReq("POST", transactionUrl(creds.url), auth_headers);
+    /*var transaction = httpReq("POST", transactionUrl(creds.url), auth_headers);
     transaction.then(function (transaction_req) {
         var response_object = JSON.parse(
             transaction_req.responseText.toString()
@@ -39,7 +98,10 @@ function submitForm() {
         // upload the file
         return uploadFile(my_file, file_id, transaction_id, creds, auth_headers);
 
-    });
+    });*/
+
+
+
 }
 
 
@@ -89,6 +151,82 @@ function httpReq(type, url, headers, body, attempts = 0) {
                 reject(new Error(httpRequest.statusText));
             }
         };
+    });
+}
+
+/**
+ * 
+ * @param {*} server_url 
+ */
+function getOAuthServerUrl(creds) {
+    return new Promise(function (resolve, reject) {
+        var server_url = creds.url;
+        console.log("[getOAuthServerUrl] server_url: " + server_url);
+        var discovery_url = server_url + "/Server/OAuthServerDiscovery.aspx";
+
+        var request = new XMLHttpRequest();
+        request.open("GET", discovery_url);
+        request.send();
+
+        request.onreadystatechange = function () {
+            if (request.readyState == 4 && request.status == 200) {
+                resolve(request);
+            } else if (request.readyState == 4 && request.status == 400) {
+                reject(new Error(request.statusText));
+            }
+        }
+    });
+}
+
+/**
+ * 
+ * @param {*} oauth_url 
+ */
+function getTokenEndpointUrl(oauth_url) {
+    return new Promise(function (resolve, reject) {
+        console.log("[getTokenEndpointUrl] oauth_url: " + oauth_url);
+        var endpoint_url = oauth_url + ".well-known/openid-configuration";
+
+        var request = new XMLHttpRequest();
+        request.open("GET", endpoint_url);
+        request.send();
+
+        request.onreadystatechange = function () {
+            if (request.readyState == 4 && request.status == 200) {
+                resolve(request);
+            } else if (request.readyState == 4 && request.status == 400) {
+                reject(new Error(request.statusText));
+            }
+        }
+    });
+}
+
+/**
+ * 
+ * @param {*} creds 
+ */
+function getToken(creds, token_endpoint) {
+    return new Promise(function (resolve, reject) {
+        console.log("[getToken] token_endpoint: " + token_endpoint);
+        var request = new XMLHttpRequest();
+        request.open("POST", token_endpoint);
+
+        var token_body = new FormData();
+        token_body.append("grant_type", "password");
+        token_body.append("scope", "Innovator");
+        token_body.append("client_id", "IOMApp");
+        token_body.append("username", creds.user);
+        token_body.append("password", creds.pwd);
+        token_body.append("database", creds.db);
+
+        request.send(token_body);
+        request.onreadystatechange = function () {
+            if (request.readyState == 4 && request.status == 200) {
+                resolve(request);
+            } else if (request.readyState == 4 && request.status == 400) {
+                reject(new Error(request.statusText));
+            }
+        }
     });
 }
 
@@ -197,6 +335,39 @@ function buildCommit(boundary, creds, file_id, file) {
     return commit_body;
 }
 
+function authenticate(creds) {
+    // get the OAuth server url
+    var oauth_res = getOAuthServerUrl(creds);
+
+    // get the OAuth server token endpoint
+    var endpoint_res = oauth_res.then(function (oauth_res) {
+        var response = oauth_res.responseText.toString();
+        var response_object = JSON.parse(response);
+        var oauth_url = response_object.locations[0].uri;
+        console.log("oauth_url: " + oauth_url);
+        return getTokenEndpointUrl(oauth_url);
+    });
+
+    // get the OAuth token
+    return endpoint_res.then(function (endpoint_res) {
+        var response = endpoint_res.responseText.toString();
+        var response_object = JSON.parse(response);
+        var token_url = response_object.token_endpoint;
+        console.log("token_url: " + token_url);
+        return getToken(creds, token_url);
+    });
+
+    // add the OAuth token to the credential object and get a transaction id
+    // return token_res.then(function (token_res) {
+    //     var response = token_res.responseText.toString();
+    //     var response_object = JSON.parse(response);
+    //     var token = response_object.access_token;
+    //     creds.token = token;
+    //     console.log("token: " + token);
+    //     return token;
+    // });
+}
+
 
 /**** url helpers ************************************************************/
 
@@ -262,6 +433,20 @@ function getBasicAuthHeaders(creds) {
     });
 
     return basic_headers;
+}
+
+/**
+ * 
+ * @param {*} creds 
+ */
+function getOAuthHeaders(creds) {
+    var oauth_headers = [];
+    oauth_headers.push({
+        name: "authorization",
+        value: "Bearer " + creds.token
+    });
+
+    return oauth_headers;
 }
 
 /**
