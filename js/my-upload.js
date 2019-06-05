@@ -16,8 +16,9 @@ async function submitForm() {
         var my_file = getFileInput();
 
         // get an OAuth token from the server and add to creds
-        creds.token = await getOAuthToken(creds);
-        var auth_headers = getOAuthHeaders(creds);
+        creds.token = await getOAuthTokenSP15(creds);
+        var auth_headers = getOAuthHeaders(creds);          // use this line for OAuth token authentication (preferred)
+        // var auth_headers = getBasicAuthHeaders(creds);   // use this line for basic authentication
 
         // get a transaction id for uploading a file to the vault server
         var transaction_url = creds.url + "/vault/odata/vault.BeginTransaction";
@@ -86,8 +87,9 @@ async function httpReq(type, url, headers, body) {
 
 /**
  * Retrieves a token from the Innovator auth server using the provided user credentials.
+ * Supports Innovator 11 SP15.
  */
-async function getOAuthToken(creds) {
+async function getOAuthTokenSP15(creds) {
     try {
         // get the OAuth server url
         var discovery_url = creds.url + "/Server/OAuthServerDiscovery.aspx";
@@ -101,16 +103,25 @@ async function getOAuthToken(creds) {
         var endpoint_obj = getJSON(endpoint_res);
         var token_url = endpoint_obj.token_endpoint;
 
-        // get an OAuth token
-        var token_body = new FormData();
-        token_body.append("grant_type", "password");
-        token_body.append("scope", "Innovator");
-        token_body.append("client_id", "IOMApp");
-        token_body.append("username", creds.user);
-        token_body.append("password", creds.pwd);
-        token_body.append("database", creds.db);
+        // build the OAuth token request
+        var token_headers = [];
+        token_headers.push({
+            name: "content-type",
+            value: "application/x-www-form-urlencoded"
+        });
 
-        var token_res = await httpReq("POST", token_url, [], token_body);
+        var token_params = [];
+        token_params.push("grant_type=password");
+        token_params.push("scope=Innovator");
+        token_params.push("client_id=IOMApp");
+        token_params.push("username=" + creds.user);
+        token_params.push("password=" + creds.pwd);
+        token_params.push("database=" + creds.db);
+
+        var token_body = token_params.join("&");
+
+        // get the token
+        var token_res = await httpReq("POST", token_url, token_headers, token_body);
         var token_obj = getJSON(token_res);
         var token = token_obj.access_token;
 
@@ -119,7 +130,6 @@ async function getOAuthToken(creds) {
     } catch (err) {
         throw new Error("Error in getOAuthToken: " + err.message);
     }
-}
 }
 
 /**
@@ -464,7 +474,7 @@ function hideAlert() {
 /**
  * Show the alert control.
  */
-function showAlert(){
+function showAlert() {
     $('#my-alert').removeClass("hide");
     $('#my-alert').addClass("show");
 }
