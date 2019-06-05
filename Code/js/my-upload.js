@@ -16,8 +16,8 @@ async function submitForm() {
         var my_file = getFileInput();
 
         // get an OAuth token from the server and add to creds
-        creds.token = await getOAuthTokenSP15(creds);
-        var auth_headers = getOAuthHeaders(creds);          // use this line for OAuth token authentication (preferred)
+        creds.token = await getOAuthToken(creds);
+        var auth_headers = getOAuthHeaders(creds);
 
         // get a transaction id for uploading a file to the vault server
         var transaction_url = creds.url + "/vault/odata/vault.BeginTransaction";
@@ -86,9 +86,9 @@ async function httpReq(type, url, headers, body) {
 
 /**
  * Retrieves a token from the Innovator auth server using the provided user credentials.
- * Supports Innovator 11 SP15.
+ * Supports Innovator 12.0.
  */
-async function getOAuthTokenSP15(creds) {
+async function getOAuthToken(creds) {
     try {
         // get the OAuth server url
         var discovery_url = creds.url + "/Server/OAuthServerDiscovery.aspx";
@@ -104,20 +104,14 @@ async function getOAuthTokenSP15(creds) {
 
         // build the OAuth token request
         var token_headers = [];
-        token_headers.push({
-            name: "content-type",
-            value: "application/x-www-form-urlencoded"
-        });
 
-        var token_params = [];
-        token_params.push("grant_type=password");
-        token_params.push("scope=Innovator");
-        token_params.push("client_id=IOMApp");
-        token_params.push("username=" + creds.user);
-        token_params.push("password=" + creds.pwd);
-        token_params.push("database=" + creds.db);
-
-        var token_body = token_params.join("&");
+        var token_body = new FormData();
+        token_body.set("grant_type", "password");
+        token_body.set("scope", "Innovator");
+        token_body.set("client_id", "IOMApp");
+        token_body.set("username", creds.user);
+        token_body.set("password", creds.pwd);
+        token_body.set("database", creds.db);
 
         // get the token
         var token_res = await httpReq("POST", token_url, token_headers, token_body);
@@ -129,6 +123,16 @@ async function getOAuthTokenSP15(creds) {
     } catch (err) {
         throw new Error("Error in getOAuthToken: " + err.message);
     }
+}
+
+/**
+ * Deprecated - do not use.
+ * 
+ * Retrieves a token from the Innovator auth server using the provided user credentials. 
+ */
+async function getOAuthTokenSP15(creds) {
+    var msg = "getOAuthTokenSP15() is deprecated in this release. Use getOAuthToken() instead.";
+    throw new Error(msg);
 }
 
 /**
