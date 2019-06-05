@@ -9,17 +9,9 @@ async function submitForm() {
         // get and validate the connection input provided by the end user
         var creds = getConnectionInput();
         creds = validateConnectionInput(creds);
-        if (creds instanceof Error) {
-            alert(creds.message);
-            return;
-        }
 
         // get the file selected by the end user
         var my_file = getFileInput();
-        if (my_file === null) {
-            alert("Please select a file to upload.");
-            return;
-        }
 
         // get an OAuth token from the server and add to creds
         creds.token = await getOAuthToken(creds);
@@ -47,10 +39,14 @@ async function submitForm() {
         alert("Successfully uploaded file '" + commit_obj.filename + "' with id '" + commit_obj.id + "'");
 
     } catch (err) {
-        console.log("Error in submitForm: " + err.message);
-        alert("Error: " + err.message);
+        return reportError(err.message);
     }
 
+}
+
+function reportError(msg) {
+    console.log(msg);
+    alert(msg);
 }
 
 
@@ -74,9 +70,9 @@ async function httpReq(type, url, headers, body) {
                 resolve(httpRequest.responseText);
 
             }
-            else if (httpRequest.readyState == 4 && httpRequest.status == 400) {
+            else if (httpRequest.readyState == 4) {
                 // reject the promise and return an error
-                reject(new Error(httpRequest.statusText + " : " + httpRequest.responseText));
+                reject(new Error(httpRequest.status + " (" + httpRequest.statusText + ") from " + url));
             }
         };
 
@@ -124,9 +120,9 @@ async function getOAuthToken(creds) {
         return token;
 
     } catch (err) {
-        console.log("Error in getOAuthToken: " + err.message);
-        return err;
+        throw new Error("Error in getOAuthToken: " + err.message);
     }
+}
 }
 
 /**
@@ -346,16 +342,16 @@ function getConnectionInput() {
  */
 function validateConnectionInput(creds) {
     if (!creds.url) {
-        return new Error("Please enter a Innovator url.");
+        throw new Error("Please enter an Innovator url.");
     }
     if (!creds.db) {
-        return new Error("Please enter a database name.");
+        throw new Error("Please enter a database name.");
     }
     if (!creds.user) {
-        return new Error("Please enter a user name.");
+        throw new Error("Please enter a user name.");
     }
     if (!creds.pwd) {
-        return new Error("Please enter a password.");
+        throw new Error("Please enter a password.");
     }
 
     return creds;
@@ -368,7 +364,7 @@ function validateConnectionInput(creds) {
 function getFileInput() {
     var file = document.getElementById("file-field").files[0];
     if (file === undefined) {
-        return null;
+        throw new Error("Please select a file to upload.");
     }
 
     return file;
@@ -388,7 +384,7 @@ function getJSON(http_response) {
         return json;
 
     } catch (err) {
-        console.log("Error in getJSON: " + err.message)
+        throw new Error("Error in getJSON: " + err.message);
     }
 }
 
