@@ -22,29 +22,21 @@ async function submitForm() {
         }
 
         // get an OAuth token from the server and add to creds
-        console.log("[log] getting OAuth token");
         creds.token = await getOAuthToken(creds);
         var auth_headers = getOAuthHeaders(creds);
-        console.log("[log] token : " + creds.token);
 
         // get a transaction id for uploading a file to the vault server
-        console.log("[log] getting a transaction id");
         var transaction_url = creds.url + "/vault/odata/vault.BeginTransaction";
         var transaction_res = await httpReq("POST", transaction_url, auth_headers);
         var transaction_obj = getJSON(transaction_res);
         var transaction_id = transaction_obj.transactionId;
-        console.log("[log] transaction_id : " + transaction_id);
 
         // upload the selected file using the transaction id
         var file_id = generateNewGuid();
-        console.log("[log] uploading the file");
         var upload_res = await uploadFile(my_file, file_id, transaction_id, creds, auth_headers);
-        console.log("[log] upload finished");
 
         // commit the vault transaction to finish the file upload
-        console.log("[log] committing transaction");
         var commit_res = await commitTransaction(my_file, file_id, transaction_id, creds, auth_headers);
-        console.log("[log] transaction commit sent");
 
         // parse commit response
         var commit_str = commit_res.toString();
@@ -71,30 +63,19 @@ async function submitForm() {
  * @param {*} url - url to use for the HTTP call
  * @param {*} headers - an array of objects representing headers. Ex: [{name: "Content-Type", value: "application/json"}, {name: "AUTHUSER", value: "admin"}]
  * @param {*} body - body content of the HTTP call
- * @param {*} attempts - number of times we should attempt this call. Default value is 0. If attempts = 0, the call will be made synchronously.
  */
-async function httpReq(type, url, headers, body, attempts = 0) {
+async function httpReq(type, url, headers, body) {
     var httpRequest = new XMLHttpRequest();
     return new Promise(function (resolve, reject) {
-        console.log("[" + type + "] " + url + " (attempts left: " + attempts + ")");
-
         // resolve or reject the promise when the response comes back
         httpRequest.onreadystatechange = function () {
             if (httpRequest.readyState == 4 && httpRequest.status == 200) {
-                // resolve the promise and return the request object
-                console.log("[resolve] " + httpRequest.responseText);
+                // resolve the promise and return the response text
                 resolve(httpRequest.responseText);
 
-            } 
-            // else if (httpRequest.readyState == 4 && attempts !== 0) {
-            //     // we have more attempts left, retry
-            //     console.log("[retry] " + url);
-            //     httpReq(type, url, headers, body, attempts - 1);
-
-            // } 
+            }
             else if (httpRequest.readyState == 4 && httpRequest.status == 400) {
                 // reject the promise and return an error
-                console.log("[reject] " + httpRequest.statusText + " : " + httpRequest.responseText);
                 reject(new Error(httpRequest.statusText + " : " + httpRequest.responseText));
             }
         };
@@ -108,24 +89,6 @@ async function httpReq(type, url, headers, body, attempts = 0) {
         }
         httpRequest.send(body);
     });
-}
-
-/**
- * 
- * @param {*} http_response 
- */
-function getJSON(http_response) {
-    try {
-        // var response_text = http_response.responseText;
-        // var response_string = response_text.toString();
-        var response_string = http_response.toString();
-        var json = JSON.parse(response_string);
-
-        return json;
-
-    } catch (err) {
-        console.log("Error in getJSON: " + err.message)
-    }
 }
 
 /**
@@ -179,9 +142,7 @@ async function getOAuthToken(creds) {
  */
 async function uploadFile(file, file_id, transaction_id, creds, auth_headers, chunk_size = 10000) {
     var results = [];
-    var upload_url = creds.url + "/vault/odata/vault.UploadFile?fileId=" + file_id;
     var size = file.size;
-    var attempts = 5;
     var start = 0;
     var end = 0;
 
@@ -190,53 +151,20 @@ async function uploadFile(file, file_id, transaction_id, creds, auth_headers, ch
         if (size - end < 0) {
             end = size;
         }
-        var chunk = file.slice(start, end);
-
-        console.log("[log] uploading chunk " + start + "-" + (end-1));
 
         // get an array of headers for this upload request
         var headers = getUploadHeaders(auth_headers, escapeURL(file.name), start, end - 1, size, transaction_id);
 
         // make the request to upload this file content
-        var response = await httpReq("POST", upload_url, headers, chunk, attempts);
+        var upload_url = creds.url + "/vault/odata/vault.UploadFile?fileId=" + file_id;
+        var chunk = file.slice(start, end);
+        var response = await httpReq("POST", upload_url, headers, chunk);
         results.push(response);
-
-        console.log("[log] response: " + response);
 
         start += chunk_size;
     }
 
     return Promise.all(results);
-
-    // setTimeout(loop, 1000);
-
-    // // we need to upload the file chunk(s) sequentially 
-    // async function loop() {
-    //     var end = start + chunk_size;
-    //     if (size - end < 0) {
-    //         end = size;
-    //     }
-    //     var chunk = file.slice(start, end);
-
-    //     console.log("[log] uploading chunk " + start + "-" + (end-1));
-
-    //     // get an array of headers for this upload request
-    //     var headers = getUploadHeaders(auth_headers, escapeURL(file.name), start, end - 1, size, transaction_id);
-
-    //     // make the request to upload this file content
-    //     var response = await httpReq("POST", upload_url, headers, chunk, attempts);
-
-    //     console.log("[log] response: " + response);
-
-    //     // if there is still content left to upload, update the start and loop again
-    //     if (end < size - 1) {
-    //         console.log("[log] next chunk");
-    //         start += chunk_size;
-    //         setTimeout(loop, 1);
-    //     } else {
-    //         console.log("[log] exiting upload loop");
-    //     }
-    // }
 }
 
 /**
@@ -448,6 +376,21 @@ function getFileInput() {
 
 
 /**** misc utilities *********************************************************/
+
+/**
+ * Parses an XMLHttpRequest as JSON and returns the JSON object
+ * 
+ * @param {*} http_response - XMLHttpRequest.responseText
+ */
+function getJSON(http_response) {
+    try {
+        var json = JSON.parse(http_response.toString());
+        return json;
+
+    } catch (err) {
+        console.log("Error in getJSON: " + err.message)
+    }
+}
 
 /**
  * Returns a new 32 character GUID we can use as an Aras Item id
