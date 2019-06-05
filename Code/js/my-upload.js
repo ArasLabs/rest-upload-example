@@ -18,7 +18,6 @@ async function submitForm() {
         // get an OAuth token from the server and add to creds
         creds.token = await getOAuthTokenSP15(creds);
         var auth_headers = getOAuthHeaders(creds);          // use this line for OAuth token authentication (preferred)
-        // var auth_headers = getBasicAuthHeaders(creds);   // use this line for basic authentication
 
         // get a transaction id for uploading a file to the vault server
         var transaction_url = creds.url + "/vault/odata/vault.BeginTransaction";
@@ -216,27 +215,16 @@ async function commitTransaction(file, file_id, transaction_id, creds, auth_head
 /**** header helpers *********************************************************/
 
 /**
+ * Deprecated - do not use.
+ * 
  * Returns an array of objects representing the headers required for an Innovator REST call using basic authentication (password rather than OAuth token).
  * Note that Aras Innovator 12.0 only supports OAuth. 
  * 
  * @param {*} creds - an object containing the connection data provided by the end user. See getConnectionInput for an example.
  */
 function getBasicAuthHeaders(creds) {
-    var basic_headers = [];
-    basic_headers.push({
-        name: "AUTHUSER",
-        value: creds.user
-    });
-    basic_headers.push({
-        name: "AUTHPASSWORD",
-        value: creds.pwd
-    });
-    basic_headers.push({
-        name: "DATABASE",
-        value: creds.db
-    });
-
-    return basic_headers;
+    var msg = "getBasicAuthHeaders() is deprecated in this release. Innovator 12.0 does not support basic authentication. Use OAuth token authentication instead.";
+    throw new Error(msg);
 }
 
 /**
