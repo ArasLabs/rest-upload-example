@@ -4,73 +4,53 @@
  * the user's input, validates their input, and then uploads the selected 
  * file to the Aras Innovator vault.
  */
-function submitForm() {
-    // get and validate the connection input provided by the end user
-    var creds = getConnectionInput();
-    creds = validateConnectionInput(creds);
-    if (creds instanceof Error) {
-        alert(creds.message);
-        return;
+async function submitForm() {
+    try {
+        // get and validate the connection input provided by the end user
+        var creds = getConnectionInput();
+        creds = validateConnectionInput(creds);
+        if (creds instanceof Error) {
+            alert(creds.message);
+            return;
+        }
+
+        // get the file selected by the end user
+        var my_file = getFileInput();
+        if (my_file === null) {
+            alert("Please select a file to upload.");
+            return;
+        }
+
+        // get an OAuth token from the server and add to creds
+        creds.token = await getOAuthToken(creds);
+        var auth_headers = getOAuthHeaders(creds);
+
+        // get a transaction id for uploading a file to the vault server
+        var transaction_url = creds.url + "/vault/odata/vault.BeginTransaction";
+        var transaction_res = await httpReq("POST", transaction_url, auth_headers);
+        var transaction_obj = getJSON(transaction_res);
+        var transaction_id = transaction_obj.transactionId;
+
+        // upload the selected file using the transaction id
+        var file_id = generateNewGuid();
+        var upload_res = await uploadFile(my_file, file_id, transaction_id, creds, auth_headers);
+
+        // commit the vault transaction to finish the file upload
+        var commit_res = await commitTransaction(my_file, file_id, transaction_id, creds, auth_headers);
+
+        // parse commit response
+        var commit_str = commit_res.toString();
+        commit_str = commit_str.substring(commit_str.indexOf("{"), commit_str.lastIndexOf("}") + 1);
+        var commit_obj = JSON.parse(commit_str);
+
+        // notify the user that the file upload succeeded
+        alert("Successfully uploaded file '" + commit_obj.filename + "' with id '" + commit_obj.id + "'");
+
+    } catch (err) {
+        console.log("Error in submitForm: " + err.message);
+        alert("Error: " + err.message);
     }
 
-    // get the file selected by the end user
-    var my_file = getFileInput();
-    if (my_file === null) {
-        alert("Please select a file to upload.");
-        return;
-    }
-
-    var transaction_id = "";
-    var file_id = generateNewGuid();
-    var auth_headers;
-
-    // get an OAuth token from the server
-    var auth_res = getOAuthToken(creds);
-
-    // get a transaction id for uploading a file to the vault server
-    var transaction_res = auth_res.then(
-        function (auth_res) {
-            var response = auth_res.responseText.toString();
-            var response_object = JSON.parse(response);
-            var token = response_object.access_token;
-
-            // add the token to creds
-            creds.token = token;
-            auth_headers = getOAuthHeaders(creds);
-
-            return httpReq("POST", creds.url + "/vault/odata/vault.BeginTransaction", auth_headers);
-        }
-    );
-
-    // upload the selected file using the transaction id
-    var upload_res = transaction_res.then(
-        function(transaction_res) {
-            var response = transaction_res.responseText.toString();
-            var response_object = JSON.parse(response);
-            transaction_id = response_object.transactionId;
-
-            return uploadFile(my_file, file_id, transaction_id, creds, auth_headers);
-        }
-    );
-
-    // commit the vault transaction to finish the file upload
-    var commit_res = upload_res.then(
-        function(upload_res){
-            return commitTransaction(my_file, file_id, transaction_id, creds, auth_headers);
-        }
-    );
-
-    // notify the user that the file upload succeeded
-    var res = commit_res.then(
-        function(commit_res) {
-            var response = commit_res.responseText.toString();
-            var response_json = response.substring(response.indexOf("{"), response.lastIndexOf("}") + 1);
-            var response_object = JSON.parse(response_json);
-
-            // inform the user that the upload and commit were successful
-            alert("Successfully uploaded file '" + response_object.filename + "' with id '" + response_object.id + "'");
-        }
-    )
 }
 
 
@@ -83,72 +63,52 @@ function submitForm() {
  * @param {*} url - url to use for the HTTP call
  * @param {*} headers - an array of objects representing headers. Ex: [{name: "Content-Type", value: "application/json"}, {name: "AUTHUSER", value: "admin"}]
  * @param {*} body - body content of the HTTP call
- * @param {*} attempts - number of times we should attempt this call. Default value is 0. If attempts = 0, the call will be made synchronously.
  */
-function httpReq(type, url, headers, body, attempts = 0) {
+async function httpReq(type, url, headers, body) {
+    var httpRequest = new XMLHttpRequest();
     return new Promise(function (resolve, reject) {
-        // start building the request
-        var httpRequest = new XMLHttpRequest();
-        if (attempts == 0) {
-            httpRequest.open(type, url, true);
-        } else {
-            httpRequest.open(type, url, false);
-        }
+        // resolve or reject the promise when the response comes back
+        httpRequest.onreadystatechange = function () {
+            if (httpRequest.readyState == 4 && httpRequest.status == 200) {
+                // resolve the promise and return the response text
+                resolve(httpRequest.responseText);
 
-        // add any headers passed to function
+            }
+            else if (httpRequest.readyState == 4 && httpRequest.status == 400) {
+                // reject the promise and return an error
+                reject(new Error(httpRequest.statusText + " : " + httpRequest.responseText));
+            }
+        };
+
+        // send the request
+        httpRequest.open(type, url, true);
         headers = headers || [];
         for (var i = 0; i < headers.length; i++) {
             var header = headers[i];
             httpRequest.setRequestHeader(header.name, header.value);
         }
-
-        // send the request
         httpRequest.send(body);
-
-        // resolve or reject the promise when the response comes back
-        httpRequest.onreadystatechange = function () {
-            if (httpRequest.readyState == 4 && httpRequest.status == 200) {
-                // resolve the promise and return the request object
-                resolve(httpRequest);
-
-            } else if (httpRequest.readyState == 4 && attempts !== 0) {
-                // we have more attempts left, retry
-                return httpReq(type, url, headers, body, attempts - 1);
-
-            } else if (httpRequest.readyState == 4 && httpRequest.status == 400) {
-                // reject the promise and return an error
-                reject(new Error(httpRequest.statusText));
-            }
-        };
     });
 }
 
 /**
  * Retrieves a token from the Innovator auth server using the provided user credentials.
- * 
- * @param {*} creds - an object containing the user's connection info (url, database, etc.)
  */
-function getOAuthToken(creds) {
-    // get the OAuth server url
-    var discovery_url = creds.url + "/Server/OAuthServerDiscovery.aspx";
-    var oauth_res = httpReq("GET", discovery_url);
+async function getOAuthToken(creds) {
+    try {
+        // get the OAuth server url
+        var discovery_url = creds.url + "/Server/OAuthServerDiscovery.aspx";
+        var oauth_res = await httpReq("GET", discovery_url);
+        var oauth_obj = getJSON(oauth_res);
+        var oauth_url = oauth_obj.locations[0].uri;
 
-    // get the OAuth server token endpoint
-    var endpoint_res = oauth_res.then(function (oauth_res) {
-        var response = oauth_res.responseText.toString();
-        var response_object = JSON.parse(response);
-        var oauth_url = response_object.locations[0].uri;
+        // get the OAuth server token endpoint url
+        var get_endpoint_url = oauth_url + ".well-known/openid-configuration";
+        var endpoint_res = await httpReq("GET", get_endpoint_url);
+        var endpoint_obj = getJSON(endpoint_res);
+        var token_url = endpoint_obj.token_endpoint;
 
-        var endpoint_url = oauth_url + ".well-known/openid-configuration";
-        return httpReq("GET", endpoint_url);
-    });
-
-    // get an OAuth token
-    return endpoint_res.then(function (endpoint_res) {
-        var response = endpoint_res.responseText.toString();
-        var response_object = JSON.parse(response);
-        var token_url = response_object.token_endpoint;
-
+        // get an OAuth token
         var token_body = new FormData();
         token_body.append("grant_type", "password");
         token_body.append("scope", "Innovator");
@@ -157,8 +117,16 @@ function getOAuthToken(creds) {
         token_body.append("password", creds.pwd);
         token_body.append("database", creds.db);
 
-        return httpReq("POST", token_url, [], token_body);
-    });
+        var token_res = await httpReq("POST", token_url, [], token_body);
+        var token_obj = getJSON(token_res);
+        var token = token_obj.access_token;
+
+        return token;
+
+    } catch (err) {
+        console.log("Error in getOAuthToken: " + err.message);
+        return err;
+    }
 }
 
 /**
@@ -172,34 +140,31 @@ function getOAuthToken(creds) {
  * @param {*} auth_headers - an array of objects representing the headers required for an Innovator REST call
  * @param {*} chunk_size - the max size of file content to upload in one call (bytes). Default value is 10,000. If the file is larger than chunk_size, we'll break up the file and send it in multiple requests.
  */
-function uploadFile(file, file_id, transaction_id, creds, auth_headers, chunk_size = 10000) {
-    var upload_url = creds.url + "/vault/odata/vault.UploadFile?fileId=" + file_id;
+async function uploadFile(file, file_id, transaction_id, creds, auth_headers, chunk_size = 10000) {
+    var results = [];
     var size = file.size;
-    var attempts = 5;
     var start = 0;
+    var end = 0;
 
-    setTimeout(loop, 1);
-
-    // we need to upload the file chunk(s) sequentially 
-    function loop() {
+    while (end < size - 1) {
         var end = start + chunk_size;
         if (size - end < 0) {
             end = size;
         }
-        var chunk = file.slice(start, end);
 
         // get an array of headers for this upload request
         var headers = getUploadHeaders(auth_headers, escapeURL(file.name), start, end - 1, size, transaction_id);
 
         // make the request to upload this file content
-        httpReq("POST", upload_url, headers, chunk, attempts);
+        var upload_url = creds.url + "/vault/odata/vault.UploadFile?fileId=" + file_id;
+        var chunk = file.slice(start, end);
+        var response = await httpReq("POST", upload_url, headers, chunk);
+        results.push(response);
 
-        // if there is still content left to upload, update the start and loop again
-        if (end < size - 1) {
-            start += chunk_size;
-            setTimeout(loop, 1);
-        } 
+        start += chunk_size;
     }
+
+    return Promise.all(results);
 }
 
 /**
@@ -211,11 +176,12 @@ function uploadFile(file, file_id, transaction_id, creds, auth_headers, chunk_si
  * @param {*} creds - an object containing the user's connection info (url, database, etc.)
  * @param {*} auth_headers - an array of objects representing the headers required for an Innovator REST call
  */
-function commitTransaction(file, file_id, transaction_id, creds, auth_headers) {
+async function commitTransaction(file, file_id, transaction_id, creds, auth_headers) {
     // build the headers and body for the commit request
     var boundary = "batch_" + file_id;
     var commit_headers = getCommitHeaders(boundary, transaction_id, auth_headers);
-    
+    var commit_url = creds.url + "/vault/odata/vault.CommitTransaction";
+
     // it's important to use the \r\n end of line character, otherwise commit will fail
     var EOL = "\r\n";
 
@@ -239,7 +205,8 @@ function commitTransaction(file, file_id, transaction_id, creds, auth_headers) {
     commit_body += "--" + boundary + "--";
 
     // send the commit request to the vault server
-    return httpReq("POST", creds.url + "/vault/odata/vault.CommitTransaction", commit_headers, commit_body);
+    var result = await httpReq("POST", commit_url, commit_headers, commit_body);
+    return result;
 }
 
 
@@ -409,6 +376,21 @@ function getFileInput() {
 
 
 /**** misc utilities *********************************************************/
+
+/**
+ * Parses an XMLHttpRequest as JSON and returns the JSON object
+ * 
+ * @param {*} http_response - XMLHttpRequest.responseText
+ */
+function getJSON(http_response) {
+    try {
+        var json = JSON.parse(http_response.toString());
+        return json;
+
+    } catch (err) {
+        console.log("Error in getJSON: " + err.message)
+    }
+}
 
 /**
  * Returns a new 32 character GUID we can use as an Aras Item id
