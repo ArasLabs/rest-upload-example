@@ -18,12 +18,14 @@ Visit [the Aras Labs blog](https://community.aras.com/tags/aras+labs) for more d
 
 Release | Notes
 --------|--------
+[v2.0.0](https://github.com/ArasLabs/rest-upload-example/releases/tag/v2.0.0) | This release deprecates support for basic authentication and an OAuth token request specific to Aras 11 SP15. These are not supported and/or recommended for Aras 12.0.
 [v1.0.0](https://github.com/ArasLabs/rest-upload-example/releases/tag/v1.0.0) | First release. Tested on Aras 11 SP15 and 12.0. Includes sample code for both OAuth token authentication and basic authentication. 
 
 #### Supported Aras Versions
 
 Project | Aras
 --------|------
+[v2.0.0](https://github.com/ArasLabs/rest-upload-example/releases/tag/v2.0.0) | 12.0
 [v1.0.0](https://github.com/ArasLabs/rest-upload-example/releases/tag/v1.0.0) | 11.0 SP15, 12.0
 
 ## Installation
