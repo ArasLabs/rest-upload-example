@@ -2,17 +2,29 @@
 
 This project provides a simple HTML form and a JavaScript file to demonstrate how to upload files to the Aras vault server via the Aras RESTful API. 
 
+## How It Works
+
+Uploading a file to the Aras vault server via the RESTful API requires three basic steps:
+
+1. Get a transaction id from the vault server
+2. Upload the file to the vault
+3. Commit the vault transaction to finish the upload
+
+To see these steps in action, check out `submitForm()` in the [my-upload.js](./Code/js/my-upload.js) file in this project. 
+
+Visit [the Aras Labs blog](https://community.aras.com/tags/aras+labs) for more detailed information on the Aras RESTful API.
+
 ## History
 
 Release | Notes
 --------|--------
-[v1.0.0](https://github.com/ArasLabs/rest-upload-example/releases/tag/v1.0.0) | First release. Tested on Aras 11 SP15. 
+[v1.0.0](https://github.com/ArasLabs/rest-upload-example/releases/tag/v1.0.0) | First release. Tested on Aras 11 SP15 and 12.0. Includes sample code for both OAuth token authentication and basic authentication. 
 
 #### Supported Aras Versions
 
 Project | Aras
 --------|------
-[v1.0.0](https://github.com/ArasLabs/rest-upload-example/releases/tag/v1.0.0) | 11.0 SP15
+[v1.0.0](https://github.com/ArasLabs/rest-upload-example/releases/tag/v1.0.0) | 11.0 SP15, 12.0
 
 ## Installation
 
@@ -31,7 +43,7 @@ Note: This project does not contain any packages or code tree files for modifyin
 3. In the connections pane on the left side of the IIS Manager window, expand the tree: **{server name} > Sites > Default Web Site**.
 4. Right click **Default Web Site** and click **Add Application** in the context menu.
 5. In the Add Application dialog, enter an **Alias** for your new application. This will determine the url for accessing the application.
-6. In the **Physical Path** field, enter or select the location of the rest-upload-example project on the server.
+6. In the **Physical Path** field, enter or select the location of the `rest-upload-example\Code` folder on the server.
 7. Click **OK** to close the Add Application dialog.
 8. Restart IIS.
 9. In your browser, navigate to `http://{server name}/{alias}` to confirm the sample application is configured correctly.
