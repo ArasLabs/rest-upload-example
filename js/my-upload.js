@@ -6,6 +6,8 @@
  */
 async function submitForm() {
     try {
+        hideAlert();
+
         // get and validate the connection input provided by the end user
         var creds = getConnectionInput();
         creds = validateConnectionInput(creds);
@@ -36,17 +38,12 @@ async function submitForm() {
         var commit_obj = JSON.parse(commit_str);
 
         // notify the user that the file upload succeeded
-        alert("Successfully uploaded file '" + commit_obj.filename + "' with id '" + commit_obj.id + "'");
+        return reportSuccess("Uploaded file '" + commit_obj.filename + "' with id '" + commit_obj.id + "'");
 
     } catch (err) {
         return reportError(err.message);
     }
 
-}
-
-function reportError(msg) {
-    console.log(msg);
-    alert(msg);
 }
 
 
@@ -426,4 +423,48 @@ function escapeURL(url) {
     url = url.split('?').join('%3F');
 
     return url;
+}
+
+/**
+ * Apply the success style to the alert control and show the specified message.
+ * 
+ * @param {*} msg - message string to display
+ */
+function reportSuccess(msg) {
+    console.log(msg);
+    showAlert();
+    $('#my-alert').removeClass("alert-danger");
+    $('#my-alert').addClass("alert-success");
+    $('#alert-bold').html("Success!");
+    $('#alert-msg').html(msg);
+}
+
+/**
+ * Apply the danger style to the alert control and show the specified message.
+ * 
+ * @param {*} msg - message string to display
+ */
+function reportError(msg) {
+    console.log(msg);
+    showAlert();
+    $('#my-alert').removeClass("alert-success");
+    $('#my-alert').addClass("alert-danger");
+    $('#alert-bold').html("Warning!");
+    $('#alert-msg').html(msg);
+}
+
+/**
+ * Hide the alert control.
+ */
+function hideAlert() {
+    $('#my-alert').removeClass("show");
+    $('#my-alert').addClass("hide");
+}
+
+/**
+ * Show the alert control.
+ */
+function showAlert(){
+    $('#my-alert').removeClass("hide");
+    $('#my-alert').addClass("show");
 }

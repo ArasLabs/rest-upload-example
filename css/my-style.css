@@ -48,6 +48,6 @@ body {
     box-shadow: none;
 }
 
-.file-upload {
-    padding-top: 100px;
+#my-alert {
+    margin-top: 15px;
 }

@@ -2,13 +2,14 @@
 
 <head>
     <!-- bootstrap references for style -->
-    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css" rel="stylesheet" id="bootstrap-css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.1.1/js/bootstrap.min.js"></script>
-    
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css" rel="stylesheet"
+        id="bootstrap-css">
+
     <!-- third-party MD5 library for password hashing -->
     <script src="js/md5.min.js"></script>
-    
+
     <!-- custom project files -->
     <link href="css/my-style.css" rel="stylesheet">
     <script src="js/my-upload.js"></script>
@@ -16,6 +17,12 @@
 
 <body>
     <div class="container file-upload">
+        <div class="row">
+            <div id="my-alert" class="alert alert-dismissable fade hide">
+                <strong id="alert-bold"></strong> <span id="alert-msg"></span>
+                <button type="button" class="close">&times;</button>
+            </div>
+        </div>
         <div class="row">
             <div class="col-md-3">
                 <div class="file-upload-info">
@@ -73,5 +80,13 @@
         </div>
     </div>
 </body>
+
+<script type="text/javascript">
+    $(document).ready(function () {
+        $('.close').on('click', function () {
+            $('#my-alert').toggleClass('show hide');
+        });
+    });
+</script>
 
 </html>
